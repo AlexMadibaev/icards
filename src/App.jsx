@@ -7,6 +7,7 @@ import defaultQuestionsRaw from "./data/questions.txt?raw";
 const emptyAnswer = "Ответ не добавлен";
 const sharePrefix = "#data=";
 const themeStorageKey = "tickets-app-theme";
+const statusStorageKey = "tickets-app-statuses";
 const defaultTicketStatus = "unlearned";
 const ticketStatuses = [
   {
@@ -46,11 +47,14 @@ function decodeState(value) {
 }
 
 function loadSharedState() {
-  if (!window.location.hash.startsWith(sharePrefix)) {
-    return loadDefaultState();
-  }
+  const state = window.location.hash.startsWith(sharePrefix)
+    ? decodeState(window.location.hash.slice(sharePrefix.length))
+    : loadDefaultState();
 
-  return decodeState(window.location.hash.slice(sharePrefix.length));
+  return {
+    ...state,
+    tickets: applySavedStatuses(state.tickets),
+  };
 }
 
 function loadDefaultState() {
@@ -65,6 +69,30 @@ function loadDefaultState() {
 
 function getTicketNumber(title) {
   return title.match(/\d+/)?.[0] || "";
+}
+
+function getTicketKey(ticket) {
+  return ticket.number || ticket.title;
+}
+
+function loadSavedStatuses() {
+  try {
+    const saved = localStorage.getItem(statusStorageKey);
+    const parsed = saved ? JSON.parse(saved) : {};
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function applySavedStatuses(tickets) {
+  const savedStatuses = loadSavedStatuses();
+
+  return tickets.map((ticket) => ({
+    ...ticket,
+    status: savedStatuses[getTicketKey(ticket)] || ticket.status || defaultTicketStatus,
+  }));
 }
 
 function parseNumberedItems(block) {
@@ -222,6 +250,15 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
+
+  useEffect(() => {
+    const statuses = tickets.reduce((result, ticket) => {
+      result[getTicketKey(ticket)] = ticket.status || defaultTicketStatus;
+      return result;
+    }, {});
+
+    localStorage.setItem(statusStorageKey, JSON.stringify(statuses));
+  }, [tickets]);
 
   useEffect(() => {
     if (
