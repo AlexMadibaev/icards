@@ -19,7 +19,9 @@ import {
   Plus,
   RotateCcw,
   Settings2,
+  Share2,
   Shuffle,
+  Smartphone,
   Sparkles,
   Sun,
   Target,
@@ -45,6 +47,7 @@ const themeStorageKey = "italian-cards-theme";
 const statusStorageKey = "italian-cards-statuses";
 const appDataStorageKey = "icards:app:v2";
 const notificationStorageKey = "icards:last-reminder";
+const installDismissedStorageKey = "icards:pwa-install-dismissed";
 const defaultTicketStatus = "unlearned";
 const defaultSettings = {
   direction: "it-ru",
@@ -55,11 +58,62 @@ const defaultSettings = {
   notifications: false,
 };
 const defaultProfile = {
+  name: "",
+  level: null,
+  selfAssessedLevel: null,
+  onboardingCompleted: false,
   xp: 0,
   streak: 0,
   dailyGoal: 10,
   dailyHistory: {},
 };
+const placementQuestions = [
+  {
+    prompt: "Что означает «ciao»?",
+    options: ["Спасибо", "Привет", "Извини", "Пожалуйста"],
+    correctIndex: 1,
+  },
+  {
+    prompt: "Выбери перевод слова «famiglia»",
+    options: ["Работа", "Дорога", "Семья", "Комната"],
+    correctIndex: 2,
+  },
+  {
+    prompt: "Как по-итальянски будет «завтра»?",
+    options: ["ieri", "oggi", "sera", "domani"],
+    correctIndex: 3,
+  },
+  {
+    prompt: "Что означает глагол «capire»?",
+    options: ["Понимать", "Говорить", "Приходить", "Учиться"],
+    correctIndex: 0,
+  },
+  {
+    prompt: "Выбери правильный перевод: «Come stai?»",
+    options: ["Куда ты идёшь?", "Как тебя зовут?", "Как ты?", "Сколько стоит?"],
+    correctIndex: 2,
+  },
+  {
+    prompt: "Закончи фразу: «Vorrei ___ caffè»",
+    options: ["una", "un", "uno", "gli"],
+    correctIndex: 1,
+  },
+  {
+    prompt: "Что означает «Ho mangiato»?",
+    options: ["Я буду есть", "Я ем", "Я поел", "Я не ем"],
+    correctIndex: 2,
+  },
+  {
+    prompt: "Выбери правильную форму: «___ amici italiani»",
+    options: ["Il", "Lo", "Gli", "La"],
+    correctIndex: 2,
+  },
+  {
+    prompt: "Что означает: «Se avessi tempo, viaggerei»?",
+    options: ["Когда будет время, я позвоню", "Если бы у меня было время, я бы путешествовал", "У меня нет времени на поездку", "Я путешествовал долго"],
+    correctIndex: 1,
+  },
+];
 const ticketStatuses = [
   {
     value: "learned",
@@ -665,6 +719,168 @@ function Card({
   );
 }
 
+function Onboarding({ profile, onComplete }) {
+  const [step, setStep] = useState("name");
+  const [name, setName] = useState(profile.name || "");
+  const [selfLevel, setSelfLevel] = useState(profile.selfAssessedLevel || "");
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [resultLevel, setResultLevel] = useState(null);
+  const answerTimer = useRef(null);
+  const question = placementQuestions[questionIndex];
+
+  useEffect(() => () => window.clearTimeout(answerTimer.current), []);
+
+  function submitName(event) {
+    event.preventDefault();
+
+    if (name.trim()) {
+      setStep("level");
+    }
+  }
+
+  function startTest() {
+    if (selfLevel) {
+      setStep("test");
+    }
+  }
+
+  function answerQuestion(optionIndex) {
+    if (selectedOption !== null) {
+      return;
+    }
+
+    const isCorrect = optionIndex === question.correctIndex;
+    const nextScore = score + (isCorrect ? 1 : 0);
+    setSelectedOption(optionIndex);
+
+    answerTimer.current = window.setTimeout(() => {
+      if (questionIndex === placementQuestions.length - 1) {
+        const level = nextScore <= 3 ? "A1" : nextScore <= 6 ? "A2" : "B1";
+        setScore(nextScore);
+        setResultLevel(level);
+        setStep("result");
+        return;
+      }
+
+      setScore(nextScore);
+      setQuestionIndex((index) => index + 1);
+      setSelectedOption(null);
+    }, 420);
+  }
+
+  function finishOnboarding() {
+    onComplete({
+      name: name.trim(),
+      selfAssessedLevel: selfLevel,
+      level: resultLevel,
+      placementScore: score,
+      onboardingCompleted: true,
+    });
+  }
+
+  return (
+    <motion.div
+      className="onboarding-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Настройка профиля и определение уровня"
+      initial={false}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.section
+        className="onboarding-panel"
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 260, damping: 25 }}
+      >
+        <div className="onboarding-brand">
+          <img src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="" />
+          <span>iCards</span>
+        </div>
+
+        <AnimatePresence mode="wait" initial={false}>
+          {step === "name" && (
+            <motion.form className="onboarding-step" key="name" onSubmit={submitName} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}>
+              <span className="onboarding-kicker">Benvenuto!</span>
+              <h1>Давай познакомимся</h1>
+              <p>Как тебя зовут? Мы будем использовать имя в целях и статистике обучения.</p>
+              <label className="onboarding-name-field">
+                <span>Твоё имя</span>
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Например: Александр" autoComplete="name" />
+              </label>
+              <button className="onboarding-primary" type="submit" disabled={!name.trim()}>
+                Продолжить <ArrowRight size={19} />
+              </button>
+            </motion.form>
+          )}
+
+          {step === "level" && (
+            <motion.div className="onboarding-step" key="level" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}>
+              <span className="onboarding-kicker">Ciao, {name.trim()}!</span>
+              <h1>Какой у тебя уровень?</h1>
+              <p>Выбери свою оценку. Затем короткий тест точнее определит стартовый уровень.</p>
+              <div className="self-level-grid">
+                {[
+                  ["beginner", "С нуля", "Только начинаю"],
+                  ["A1", "A1", "Знаю базовые слова"],
+                  ["A2", "A2", "Понимаю простые фразы"],
+                  ["B1", "B1+", "Могу поддержать разговор"],
+                  ["unknown", "Не знаю", "Пусть решит тест"],
+                ].map(([value, label, description]) => (
+                  <button className={selfLevel === value ? "selected" : ""} type="button" key={value} onClick={() => setSelfLevel(value)}>
+                    <strong>{label}</strong><span>{description}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="onboarding-primary" type="button" disabled={!selfLevel} onClick={startTest}>
+                Начать тест <ListChecks size={19} />
+              </button>
+            </motion.div>
+          )}
+
+          {step === "test" && (
+            <motion.div className="onboarding-step placement-step" key={`test-${questionIndex}`} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}>
+              <div className="placement-progress-copy"><span>Определение уровня</span><strong>{questionIndex + 1}/{placementQuestions.length}</strong></div>
+              <div className="placement-progress"><motion.div initial={{ scaleX: questionIndex / placementQuestions.length }} animate={{ scaleX: (questionIndex + 1) / placementQuestions.length }} /></div>
+              <h1>{question.prompt}</h1>
+              <div className="placement-options">
+                {question.options.map((option, index) => {
+                  const isSelected = selectedOption === index;
+                  const isCorrect = selectedOption !== null && index === question.correctIndex;
+                  const isWrong = isSelected && index !== question.correctIndex;
+                  const stateClass = isCorrect ? "correct" : isWrong ? "wrong" : isSelected ? "selected" : "";
+
+                  return (
+                    <button className={stateClass} type="button" key={option} onClick={() => answerQuestion(index)}>
+                      <span>{String.fromCharCode(65 + index)}</span>{option}
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {step === "result" && (
+            <motion.div className="onboarding-step onboarding-result" key="result" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+              <motion.div className="result-level-badge" initial={{ rotate: -8, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 280, damping: 18 }}>{resultLevel}</motion.div>
+              <span className="onboarding-kicker">Тест завершён</span>
+              <h1>Твой уровень — {resultLevel}</h1>
+              <p>Правильных ответов: {score} из {placementQuestions.length}. Мы сохраним результат и подберём подходящие упражнения.</p>
+              <button className="onboarding-primary" type="button" onClick={finishOnboarding}>
+                Начать обучение <Sparkles size={19} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.section>
+    </motion.div>
+  );
+}
+
 function Modal({ title, icon: Icon, onClose, children }) {
   return (
     <motion.div
@@ -715,6 +931,13 @@ export default function App() {
   const [syncText, setSyncText] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
   const [clock, setClock] = useState(() => Date.now());
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [showInstallOffer, setShowInstallOffer] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(() => (
+    window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true
+  ));
+  const [isIOSDevice] = useState(() => /iphone|ipad|ipod/i.test(navigator.userAgent));
+  const [isAndroidDevice] = useState(() => /android/i.test(navigator.userAgent));
   const [theme, setTheme] = useState(() => localStorage.getItem(themeStorageKey) || "light");
   const shouldReduceMotion = useReducedMotion();
 
@@ -782,6 +1005,47 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (isInstalled) {
+      return undefined;
+    }
+
+    const dismissedAt = Number(localStorage.getItem(installDismissedStorageKey) || 0);
+    const dismissedRecently = Date.now() - dismissedAt < 3 * 24 * 60 * 60 * 1000;
+
+    function handleBeforeInstallPrompt(event) {
+      event.preventDefault();
+      setDeferredInstallPrompt(event);
+
+      if (!dismissedRecently && profile.onboardingCompleted) {
+        setShowInstallOffer(true);
+      }
+    }
+
+    function handleInstalled() {
+      setIsInstalled(true);
+      setShowInstallOffer(false);
+      setDeferredInstallPrompt(null);
+      localStorage.removeItem(installDismissedStorageKey);
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+
+    const offerTimer = profile.onboardingCompleted && !dismissedRecently && (isIOSDevice || isAndroidDevice)
+      ? window.setTimeout(() => setShowInstallOffer(true), 1400)
+      : null;
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+
+      if (offerTimer) {
+        window.clearTimeout(offerTimer);
+      }
+    };
+  }, [isInstalled, isIOSDevice, isAndroidDevice, profile.onboardingCompleted]);
 
   useEffect(() => {
     const progress = tickets.reduce((result, ticket) => {
@@ -893,6 +1157,11 @@ export default function App() {
     setSettings((currentSettings) => ({ ...currentSettings, [key]: value }));
   }
 
+  function completeOnboarding(onboardingData) {
+    setProfile((currentProfile) => ({ ...currentProfile, ...onboardingData }));
+    setSettings((currentSettings) => ({ ...currentSettings, level: "all", category: "all" }));
+  }
+
   async function requestNotifications() {
     if (!("Notification" in window)) {
       setSyncMessage("Уведомления не поддерживаются в этом браузере");
@@ -908,6 +1177,33 @@ export default function App() {
       new Notification("Напоминания включены", {
         body: `Сейчас готово к повторению: ${dueCount}`,
       });
+    }
+  }
+
+  function dismissInstallOffer() {
+    setShowInstallOffer(false);
+    localStorage.setItem(installDismissedStorageKey, String(Date.now()));
+  }
+
+  async function installApp() {
+    if (!deferredInstallPrompt) {
+      setShowInstallOffer(false);
+      setActiveModal("install");
+      return;
+    }
+
+    try {
+      await deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      setShowInstallOffer(false);
+      setDeferredInstallPrompt(null);
+
+      if (choice.outcome !== "accepted") {
+        localStorage.setItem(installDismissedStorageKey, String(Date.now()));
+      }
+    } catch {
+      setShowInstallOffer(false);
+      setActiveModal("install");
     }
   }
 
@@ -1017,6 +1313,42 @@ export default function App() {
       <style>{styles}</style>
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
+
+      <AnimatePresence>
+        {showInstallOffer && !isInstalled && (
+          <motion.aside
+            className="install-offer"
+            role="dialog"
+            aria-label="Установить iCards"
+            initial={{ opacity: 0, y: 28, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 300, damping: 26 }}
+          >
+            <img src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="" />
+            <div className="install-offer-copy">
+              <strong>Установить iCards?</strong>
+              <span>Откроется как обычное приложение и будет работать офлайн.</span>
+            </div>
+            <div className="install-offer-actions">
+              <button className="install-now-button" type="button" onClick={installApp}>
+                <Download size={17} />
+                {deferredInstallPrompt ? "Установить" : "Как установить"}
+              </button>
+              <button className="install-later-button" type="button" onClick={dismissInstallOffer}>Позже</button>
+            </div>
+            <button className="install-offer-close" type="button" onClick={dismissInstallOffer} aria-label="Закрыть предложение установки">
+              <X size={17} />
+            </button>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {!profile.onboardingCompleted && (
+          <Onboarding profile={profile} onComplete={completeOnboarding} />
+        )}
+      </AnimatePresence>
 
       <motion.header
         className="header"
@@ -1157,7 +1489,7 @@ export default function App() {
           <div className="mobile-session-top">
             <div className="mobile-goal-copy">
               <Target size={17} />
-              <span>Сегодня</span>
+              <span>{profile.name ? `Ciao, ${profile.name}` : "Сегодня"}</span>
               <strong>{todayProgress.reviews}/{dailyGoal}</strong>
             </div>
             <div className="mobile-session-stats">
@@ -1298,9 +1630,46 @@ export default function App() {
       )}
 
       <AnimatePresence>
+        {activeModal === "install" && (
+          <Modal title="Установка iCards" icon={Smartphone} onClose={() => setActiveModal(null)}>
+            <div className="install-guide">
+              <img src={`${import.meta.env.BASE_URL}icons/icon-192.png`} alt="Иконка iCards" />
+              <div className="install-guide-intro">
+                <strong>{isIOSDevice ? "Добавь приложение через Safari" : "Добавь приложение на главный экран"}</strong>
+                <span>После установки iCards запускается без панели браузера и сохраняет прогресс на устройстве.</span>
+              </div>
+              <ol>
+                {isIOSDevice ? (
+                  <>
+                    <li><span><Share2 size={19} /></span><div><strong>Нажми «Поделиться»</strong><small>Кнопка находится в панели Safari.</small></div></li>
+                    <li><span><Plus size={19} /></span><div><strong>Выбери «На экран Домой»</strong><small>При необходимости прокрути список действий.</small></div></li>
+                    <li><span><Check size={19} /></span><div><strong>Нажми «Добавить»</strong><small>Иконка iCards появится среди приложений.</small></div></li>
+                  </>
+                ) : (
+                  <>
+                    <li><span><Settings2 size={19} /></span><div><strong>Открой меню браузера</strong><small>Нажми ⋮ в правом верхнем углу Chrome.</small></div></li>
+                    <li><span><Download size={19} /></span><div><strong>Выбери «Установить приложение»</strong><small>Иногда пункт называется «Добавить на главный экран».</small></div></li>
+                    <li><span><Check size={19} /></span><div><strong>Подтверди установку</strong><small>iCards появится на главном экране.</small></div></li>
+                  </>
+                )}
+              </ol>
+              <button className="modal-primary-button install-guide-done" type="button" onClick={() => setActiveModal(null)}>
+                Понятно
+              </button>
+            </div>
+          </Modal>
+        )}
+
         {activeModal === "settings" && (
           <Modal title="Настройки обучения" icon={Settings2} onClose={() => setActiveModal(null)}>
             <div className="mobile-settings-sheet">
+              {!isInstalled && (
+                <button className="sheet-toggle install-sheet-toggle" type="button" onClick={installApp}>
+                  <Download size={19} />
+                  <span><strong>Установить iCards</strong><small>Добавить приложение на главный экран</small></span>
+                  <em>Установить</em>
+                </button>
+              )}
               <label className="sheet-field">
                 <span>Категория</span>
                 <select value={settings.category} onChange={(event) => updateSetting("category", event.target.value)}>
@@ -1402,6 +1771,11 @@ export default function App() {
 
         {activeModal === "stats" && (
           <Modal title="Статистика обучения" icon={BarChart3} onClose={() => setActiveModal(null)}>
+            <div className="learner-summary">
+              <span>{(profile.name || "?").slice(0, 1).toUpperCase()}</span>
+              <div><strong>{profile.name || "Ученик"}</strong><small>Определённый уровень: {profile.level || "—"}</small></div>
+              <button type="button" onClick={() => { setActiveModal(null); setProfile((current) => ({ ...current, onboardingCompleted: false })); }}>Пройти тест снова</button>
+            </div>
             <div className="stats-grid">
               <div><Sparkles size={20} /><strong>{profile.xp || 0}</strong><span>XP</span></div>
               <div><Flame size={20} /><strong>{profile.streak || 0}</strong><span>дней подряд</span></div>
@@ -2911,6 +3285,508 @@ button:focus-visible,
   padding: 0 16px;
 }
 
+.onboarding-backdrop {
+  position: fixed;
+  z-index: 130;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(88, 204, 2, 0.22), transparent 32%),
+    radial-gradient(circle at 90% 85%, rgba(28, 176, 246, 0.18), transparent 34%),
+    var(--bg);
+  padding: 20px;
+}
+
+.onboarding-panel {
+  width: min(100%, 620px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  background-color: var(--panel);
+  box-shadow: 0 32px 100px rgba(24, 48, 27, 0.22);
+}
+
+.onboarding-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid var(--border);
+  padding: 15px 20px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.onboarding-brand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.onboarding-step {
+  display: grid;
+  gap: 16px;
+  min-height: 460px;
+  padding: 34px;
+}
+
+.onboarding-kicker {
+  color: var(--primary-hover);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.onboarding-step h1,
+.onboarding-step p {
+  margin: 0;
+}
+
+.onboarding-step h1 {
+  color: var(--text);
+  font-size: clamp(25px, 5vw, 36px);
+  line-height: 1.15;
+}
+
+.onboarding-step p {
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.onboarding-name-field {
+  display: grid;
+  align-self: center;
+  gap: 7px;
+}
+
+.onboarding-name-field span {
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.onboarding-name-field input {
+  width: 100%;
+  height: 58px;
+  border: 2px solid var(--border-strong);
+  border-radius: 16px;
+  outline: 0;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.onboarding-name-field input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 14%, transparent);
+}
+
+.onboarding-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: end;
+  gap: 8px;
+  width: 100%;
+  min-height: 54px;
+  border: 2px solid var(--primary);
+  border-radius: 16px;
+  background: var(--primary);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 5px 0 var(--primary-hover);
+  font-weight: 900;
+}
+
+.onboarding-primary:disabled {
+  border-color: var(--border-strong);
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+  box-shadow: 0 4px 0 var(--border-strong);
+}
+
+.self-level-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.self-level-grid button {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  border: 2px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  padding: 11px 13px;
+  text-align: left;
+}
+
+.self-level-grid button:last-child {
+  grid-column: 1 / -1;
+}
+
+.self-level-grid button.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.self-level-grid strong {
+  font-size: 13px;
+}
+
+.self-level-grid span {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.placement-step {
+  align-content: start;
+}
+
+.placement-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.placement-progress {
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.placement-progress div {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #8ee000);
+  transform-origin: left;
+}
+
+.placement-step h1 {
+  margin: 10px 0 5px;
+  font-size: clamp(20px, 4vw, 27px);
+}
+
+.placement-options {
+  display: grid;
+  gap: 9px;
+}
+
+.placement-options button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 55px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.placement-options button > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.placement-options button:hover,
+.placement-options button.selected {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.placement-options button.correct {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.placement-options button.wrong {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.onboarding-result {
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.result-level-badge {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border: 8px solid var(--primary-soft);
+  border-radius: 50%;
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 30%, transparent);
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.onboarding-result .onboarding-primary {
+  margin-top: 8px;
+}
+
+.learner-summary {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.learner-summary > span {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.learner-summary > div {
+  display: grid;
+  gap: 3px;
+}
+
+.learner-summary strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.learner-summary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.learner-summary button {
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.install-offer {
+  position: fixed;
+  z-index: 95;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 11px 13px;
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  padding: 15px;
+  box-shadow: 0 24px 70px rgba(18, 39, 21, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.install-offer > img {
+  width: 58px;
+  height: 58px;
+  border-radius: 15px;
+}
+
+.install-offer-copy {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding-right: 20px;
+}
+
+.install-offer-copy strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.install-offer-copy span {
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.install-offer-actions {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.install-offer-actions button {
+  min-height: 42px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.install-now-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 0 var(--primary-hover);
+}
+
+.install-later-button {
+  border: 1px solid var(--border-strong);
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  padding: 0 15px;
+}
+
+.install-offer-close {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.install-guide {
+  display: grid;
+  gap: 16px;
+}
+
+.install-guide > img {
+  width: 78px;
+  height: 78px;
+  margin: 0 auto;
+  border-radius: 20px;
+}
+
+.install-guide-intro {
+  display: grid;
+  gap: 5px;
+  text-align: center;
+}
+
+.install-guide-intro strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.install-guide-intro span {
+  color: var(--muted-strong);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.install-guide ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.install-guide li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.install-guide li > span {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary-hover);
+}
+
+.install-guide li > div {
+  display: grid;
+  gap: 2px;
+}
+
+.install-guide li strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.install-guide li small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.install-guide-done {
+  width: 100%;
+}
+
+.install-sheet-toggle {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.install-sheet-toggle > svg,
+.install-sheet-toggle em {
+  color: var(--primary-hover);
+}
+
 .mobile-settings-button,
 .mobile-session-bar,
 .mobile-bottom-nav {
@@ -3696,6 +4572,34 @@ button:focus-visible,
     transition: transform 180ms ease, opacity 180ms ease;
   }
 
+  .install-offer {
+    right: 8px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    left: 8px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    width: auto;
+    border-radius: 18px;
+    padding: 12px;
+  }
+
+  .install-offer > img {
+    width: 50px;
+    height: 50px;
+    border-radius: 13px;
+  }
+
+  .install-offer-copy strong {
+    font-size: 12px;
+  }
+
+  .install-offer-copy span {
+    font-size: 8px;
+  }
+
+  .install-offer-actions button {
+    min-height: 40px;
+  }
+
   .mobile-bottom-nav button {
     display: grid;
     place-items: center;
@@ -3716,7 +4620,8 @@ button:focus-visible,
     color: var(--primary-hover);
   }
 
-  .page:has(.answer-input:focus) .mobile-bottom-nav {
+  .page:has(.answer-input:focus) .mobile-bottom-nav,
+  .page:has(.answer-input:focus) .install-offer {
     opacity: 0;
     pointer-events: none;
     transform: translateY(120%);
@@ -3728,6 +4633,89 @@ button:focus-visible,
 
   .modal-head h2 {
     font-size: 16px;
+  }
+
+  .onboarding-backdrop {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .onboarding-panel {
+    width: 100%;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .onboarding-brand {
+    min-height: 58px;
+    padding: 10px 16px;
+  }
+
+  .onboarding-brand img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .onboarding-step {
+    min-height: calc(100dvh - 58px);
+    overflow-y: auto;
+    gap: 14px;
+    padding: 24px 18px max(24px, env(safe-area-inset-bottom));
+  }
+
+  .onboarding-step h1 {
+    font-size: 27px;
+  }
+
+  .onboarding-step p {
+    font-size: 11px;
+  }
+
+  .self-level-grid {
+    gap: 7px;
+  }
+
+  .self-level-grid button {
+    min-height: 67px;
+    padding: 9px 10px;
+  }
+
+  .placement-step {
+    align-content: start;
+  }
+
+  .placement-step h1 {
+    margin-top: 6px;
+    font-size: 21px;
+  }
+
+  .placement-options {
+    gap: 7px;
+  }
+
+  .placement-options button {
+    min-height: 52px;
+    padding: 7px 10px;
+    font-size: 10px;
+  }
+
+  .onboarding-result {
+    align-content: center;
+  }
+
+  .learner-summary {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .learner-summary > span {
+    width: 44px;
+    height: 44px;
+  }
+
+  .learner-summary button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 }
 `;
