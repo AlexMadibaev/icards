@@ -18,6 +18,7 @@ import {
   Moon,
   Plus,
   RotateCcw,
+  Settings2,
   Shuffle,
   Sparkles,
   Sun,
@@ -593,7 +594,6 @@ function Card({
                 value={answer}
                 type="text"
                 autoComplete="off"
-                autoFocus
                 placeholder={direction === "it-ru" ? "Например: привет" : "Например: ciao"}
                 aria-invalid={inputError}
                 onChange={(event) => {
@@ -652,7 +652,6 @@ function Card({
                 onStatusChange(ticket.id, answerResult);
                 onAdvance();
               }}
-              autoFocus
               whileHover={shouldReduceMotion ? undefined : { y: -2 }}
               whileTap={shouldReduceMotion ? undefined : { y: 2 }}
             >
@@ -1080,6 +1079,14 @@ export default function App() {
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </motion.button>
+          <button
+            className="header-icon-button mobile-settings-button"
+            type="button"
+            onClick={() => setActiveModal("settings")}
+            aria-label="Настройки обучения"
+          >
+            <Settings2 size={20} />
+          </button>
         </div>
       </motion.header>
 
@@ -1143,6 +1150,26 @@ export default function App() {
             <span className="stat-pill stat-new"><Sparkles size={15} /> Осталось: {unlearnedCount}</span>
           </div>
         </motion.section>
+      )}
+
+      {tickets.length > 0 && (
+        <section className="mobile-session-bar" aria-label="Прогресс на сегодня">
+          <div className="mobile-session-top">
+            <div className="mobile-goal-copy">
+              <Target size={17} />
+              <span>Сегодня</span>
+              <strong>{todayProgress.reviews}/{dailyGoal}</strong>
+            </div>
+            <div className="mobile-session-stats">
+              <span><Flame size={16} /> {profile.streak || 0}</span>
+              <span><Sparkles size={15} /> {profile.xp || 0} XP</span>
+              <span><CalendarClock size={15} /> {dueCount}</span>
+            </div>
+          </div>
+          <div className="mobile-goal-track" aria-hidden="true">
+            <motion.div animate={{ scaleX: dailyGoalPercent / 100 }} />
+          </div>
+        </section>
       )}
 
       {tickets.length > 0 && (
@@ -1271,12 +1298,73 @@ export default function App() {
       )}
 
       <AnimatePresence>
+        {activeModal === "settings" && (
+          <Modal title="Настройки обучения" icon={Settings2} onClose={() => setActiveModal(null)}>
+            <div className="mobile-settings-sheet">
+              <label className="sheet-field">
+                <span>Категория</span>
+                <select value={settings.category} onChange={(event) => updateSetting("category", event.target.value)}>
+                  <option value="all">Все темы</option>
+                  {categories.map((category) => <option value={category} key={category}>{category}</option>)}
+                </select>
+              </label>
+              <label className="sheet-field">
+                <span>Уровень</span>
+                <select value={settings.level} onChange={(event) => updateSetting("level", event.target.value)}>
+                  <option value="all">Все уровни</option>
+                  <option value="A1">A1</option>
+                  <option value="A2">A2</option>
+                  <option value="B1">B1</option>
+                </select>
+              </label>
+              <div className="sheet-control">
+                <span>Направление</span>
+                <div>
+                  <button className={settings.direction === "it-ru" ? "active" : ""} type="button" onClick={() => updateSetting("direction", "it-ru")}>IT → RU</button>
+                  <button className={settings.direction === "ru-it" ? "active" : ""} type="button" onClick={() => updateSetting("direction", "ru-it")}>RU → IT</button>
+                </div>
+              </div>
+              <div className="sheet-control">
+                <span>Упражнение</span>
+                <div className="three-options">
+                  <button className={settings.exerciseMode === "typing" ? "active" : ""} type="button" onClick={() => updateSetting("exerciseMode", "typing")}>Ввод</button>
+                  <button className={settings.exerciseMode === "choice" ? "active" : ""} type="button" onClick={() => updateSetting("exerciseMode", "choice")}>Выбор</button>
+                  <button className={settings.exerciseMode === "speaking" ? "active" : ""} type="button" onClick={() => updateSetting("exerciseMode", "speaking")}>Голос</button>
+                </div>
+              </div>
+              <button
+                className={settings.queueMode === "due" ? "sheet-toggle active" : "sheet-toggle"}
+                type="button"
+                onClick={() => updateSetting("queueMode", settings.queueMode === "due" ? "all" : "due")}
+              >
+                <CalendarClock size={19} />
+                <span><strong>Только повторения</strong><small>Сейчас доступно: {dueCount}</small></span>
+                <em>{settings.queueMode === "due" ? "Вкл" : "Выкл"}</em>
+              </button>
+              <button
+                className={settings.notifications ? "sheet-toggle active" : "sheet-toggle"}
+                type="button"
+                onClick={requestNotifications}
+              >
+                <Bell size={19} />
+                <span><strong>Напоминания</strong><small>Сообщать о словах для повторения</small></span>
+                <em>{settings.notifications ? "Вкл" : "Выкл"}</em>
+              </button>
+              <button className="sheet-toggle" type="button" onClick={toggleTheme}>
+                {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+                <span><strong>Тема</strong><small>{theme === "dark" ? "Переключить на светлую" : "Переключить на тёмную"}</small></span>
+                <em>{theme === "dark" ? "Тёмная" : "Светлая"}</em>
+              </button>
+            </div>
+          </Modal>
+        )}
+
         {activeModal === "add" && (
           <Modal title="Мои слова" icon={FolderPlus} onClose={() => setActiveModal(null)}>
             <form className="custom-word-form" onSubmit={addCustomWord}>
               <label>
                 <span>Итальянское слово</span>
-                <input name="italian" required autoFocus placeholder="andare" autoComplete="off" />
+                <input name="italian" required placeholder="andare" autoComplete="off" />
               </label>
               <label>
                 <span>Перевод</span>
@@ -1368,6 +1456,25 @@ export default function App() {
           </Modal>
         )}
       </AnimatePresence>
+
+      <nav className="mobile-bottom-nav" aria-label="Основная навигация">
+        <button type="button" onClick={() => setActiveModal("add")}>
+          <Plus size={21} />
+          <span>Слово</span>
+        </button>
+        <button type="button" onClick={() => setActiveModal("stats")}>
+          <BarChart3 size={21} />
+          <span>Прогресс</span>
+        </button>
+        <button className="primary" type="button" onClick={() => setActiveModal("settings")}>
+          <Settings2 size={22} />
+          <span>Режим</span>
+        </button>
+        <button type="button" onClick={() => { setActiveModal("sync"); createBackup(); }}>
+          <Cloud size={21} />
+          <span>Перенос</span>
+        </button>
+      </nav>
     </main>
   );
 }
@@ -2804,6 +2911,127 @@ button:focus-visible,
   padding: 0 16px;
 }
 
+.mobile-settings-button,
+.mobile-session-bar,
+.mobile-bottom-nav {
+  display: none;
+}
+
+.mobile-settings-sheet {
+  display: grid;
+  gap: 14px;
+}
+
+.sheet-field,
+.sheet-control {
+  display: grid;
+  gap: 6px;
+}
+
+.sheet-field > span,
+.sheet-control > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sheet-field select {
+  width: 100%;
+  height: 48px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  outline: 0;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.sheet-control > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  border-radius: 14px;
+  background: var(--panel-soft);
+  padding: 4px;
+}
+
+.sheet-control > div.three-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sheet-control button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sheet-control button.active {
+  background: var(--panel);
+  color: var(--primary-hover);
+  box-shadow: var(--soft-shadow);
+}
+
+.sheet-toggle {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.sheet-toggle > svg {
+  color: var(--blue);
+}
+
+.sheet-toggle > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sheet-toggle strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.sheet-toggle small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.sheet-toggle em {
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.sheet-toggle.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.sheet-toggle.active em,
+.sheet-toggle.active > svg {
+  color: var(--primary-hover);
+}
+
 .ticket-rail {
   display: flex;
   gap: 8px;
@@ -3232,6 +3460,274 @@ button:focus-visible,
 
   .sync-actions {
     grid-template-columns: 1fr;
+  }
+
+  .page {
+    overflow: visible;
+    padding: 8px 10px calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .header {
+    flex-wrap: nowrap;
+    min-height: 48px;
+    margin-bottom: 8px;
+  }
+
+  .brand-block {
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .header h1 {
+    font-size: 21px;
+  }
+
+  .brand-subtitle {
+    font-size: 8px;
+  }
+
+  .header-actions {
+    width: auto;
+    margin-left: auto;
+  }
+
+  .header-actions > * {
+    display: none;
+  }
+
+  .header-actions .mobile-settings-button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+
+  .lesson-progress,
+  .study-controls {
+    display: none;
+  }
+
+  .mobile-session-bar {
+    display: grid;
+    gap: 8px;
+    margin: 0 auto 9px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    padding: 9px 11px;
+    box-shadow: var(--soft-shadow);
+  }
+
+  .mobile-session-top,
+  .mobile-goal-copy,
+  .mobile-session-stats,
+  .mobile-session-stats span {
+    display: flex;
+    align-items: center;
+  }
+
+  .mobile-session-top {
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mobile-goal-copy {
+    gap: 5px;
+    color: var(--orange);
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .mobile-goal-copy strong {
+    color: var(--text);
+  }
+
+  .mobile-session-stats {
+    gap: 7px;
+  }
+
+  .mobile-session-stats span {
+    gap: 3px;
+    color: var(--muted-strong);
+    font-size: 9px;
+    font-weight: 900;
+  }
+
+  .mobile-session-stats span:first-child {
+    color: var(--orange);
+  }
+
+  .mobile-session-stats span:nth-child(2) {
+    color: var(--blue);
+  }
+
+  .mobile-goal-track {
+    overflow: hidden;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--border);
+  }
+
+  .mobile-goal-track div {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--orange), #ffc800);
+    transform-origin: left;
+  }
+
+  .study-layout {
+    gap: 8px;
+  }
+
+  .study-topline {
+    min-height: 40px;
+  }
+
+  .word-counter span {
+    max-width: 270px;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .word-counter strong {
+    font-size: 14px;
+  }
+
+  .study-stage {
+    gap: 7px;
+  }
+
+  .card-button {
+    height: clamp(270px, 36dvh, 320px);
+    min-height: 270px;
+  }
+
+  .card-side {
+    border-bottom-width: 6px;
+    border-radius: 18px;
+    padding: 15px;
+  }
+
+  .face-label {
+    max-width: calc(100% - 52px);
+    overflow: hidden;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sound-button {
+    width: 42px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .single-word,
+  .single-word.translation {
+    font-size: clamp(34px, 13vw, 54px);
+  }
+
+  .flip-hint {
+    font-size: 8px;
+  }
+
+  .answer-form,
+  .choice-panel {
+    gap: 6px;
+  }
+
+  .answer-label {
+    font-size: 9px;
+  }
+
+  .answer-input,
+  .voice-answer-button,
+  .check-answer-button {
+    min-height: 47px;
+  }
+
+  .voice-answer-button {
+    width: 47px;
+  }
+
+  .skip-answer-button {
+    min-height: 22px;
+    font-size: 8px;
+  }
+
+  .choice-grid {
+    gap: 6px;
+  }
+
+  .choice-button {
+    min-height: 46px;
+    border-radius: 12px;
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .swipe-hint {
+    display: none;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    z-index: 80;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    min-height: 62px;
+    border: 1px solid var(--border);
+    border-radius: 19px;
+    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    padding: 5px;
+    box-shadow: 0 14px 38px rgba(22, 39, 25, 0.22);
+    backdrop-filter: blur(18px);
+    transition: transform 180ms ease, opacity 180ms ease;
+  }
+
+  .mobile-bottom-nav button {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    min-width: 0;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 8px;
+    font-weight: 900;
+  }
+
+  .mobile-bottom-nav button.primary {
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+  }
+
+  .page:has(.answer-input:focus) .mobile-bottom-nav {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(120%);
+  }
+
+  .modal-head {
+    padding: 13px 14px;
+  }
+
+  .modal-head h2 {
+    font-size: 16px;
   }
 }
 `;
